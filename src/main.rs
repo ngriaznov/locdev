@@ -8,6 +8,15 @@ use thiserror::Error;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref HOSTS_PATH: &'static str = match os_info::get().os_type() {
+        os_info::Type::Windows => "C:/Windows/System32/drivers/etc/hosts",
+        os_info::Type::Linux => "/etc/hosts",
+        _ => panic!("Unsupported OS"),
+    };
+}
 #[tokio::main]
 async fn main() -> ExitCode {
     let opts: Options = Options::parse();
@@ -34,14 +43,14 @@ async fn add_hosts_entry(add: AddRemove) -> Result<ColoredString, Error> {
     let new_entry = format!("{} {}", add.ip.cyan().bold(), add.hostname.magenta().bold());
     let new_entry_line = format!("{} {}\n", add.ip, add.hostname);
 
-    let contents = read_to_string(HOSTS_PATH)?;
+    let contents = read_to_string(*HOSTS_PATH)?;
     if contents.lines().any(|line| line.ends_with(&add.hostname)) {
         return Err(Error::Generic(
             format!("Entry already exists: {}", new_entry).red(),
         ));
     }
 
-    let mut file = OpenOptions::new().append(true).open(HOSTS_PATH)?;
+    let mut file = OpenOptions::new().append(true).open(*HOSTS_PATH)?;
     file.write_all(new_entry_line.as_bytes())?;
 
     Ok(format!("Added entry to hosts file: {}", new_entry).green())
@@ -60,7 +69,7 @@ async fn remove_hosts_entry(remove: AddRemove) -> Result<ColoredString, Error> {
         ));
     }
 
-    let mut hosts_file = File::open(HOSTS_PATH).await?;
+    let mut hosts_file = File::open(*HOSTS_PATH).await?;
     let mut contents = String::new();
     hosts_file.read_to_string(&mut contents).await?;
 
@@ -83,7 +92,7 @@ async fn remove_hosts_entry(remove: AddRemove) -> Result<ColoredString, Error> {
         .filter(|line| !line.ends_with(&remove.hostname))
         .collect();
 
-    fs::write(HOSTS_PATH, format!("{}\n", entries.join("\n")))?;
+    fs::write(*HOSTS_PATH, format!("{}\n", entries.join("\n")))?;
 
     Ok(format!(
         "Removed entry from hosts file: {} {}",
@@ -94,7 +103,7 @@ async fn remove_hosts_entry(remove: AddRemove) -> Result<ColoredString, Error> {
 }
 
 async fn print_current_entries() -> Result<ColoredString, Error> {
-    let contents = read_to_string(HOSTS_PATH)?;
+    let contents = read_to_string(*HOSTS_PATH)?;
 
     let current_entries = contents
         .lines()
@@ -144,5 +153,3 @@ enum Error {
     #[error("{0}")]
     Generic(ColoredString),
 }
-
-const HOSTS_PATH: &str = "/etc/hosts";
